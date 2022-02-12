@@ -1,6 +1,8 @@
 import psycopg2
+import redis
+import json
 import os
-from bottle import route, run, request
+from bottle import Bottle, request
 
 DSN = "dbname=email_sender user=postgres host=db password={}".format(
     os.environ['DB_PASSWORD']
@@ -9,26 +11,31 @@ print(DSN)
 SQL = 'INSERT INTO emails (assunto, mensagem) VALUES (%s, %s)'
 
 
-def register_message(assunto, mensagem):
-    conn = psycopg2.connect(DSN) 
-    cur = conn.cursor()
-    cur.execute(SQL, (assunto, mensagem))
-    conn.commit()
-    cur.close()
-    conn.close()
+class Sender(Bottle):
+    def __init__(self):
+        super().__init__()
+        self.route('/', method='POST', callback=self.send)
+        self.fila = redis.StrictRedis(host='queue', port=6379, db=0)
 
-    print('Mensagem registrada !')
+    def register_message(assunto, mensagem):
+        conn = psycopg2.connect(DSN)
+        cur = conn.cursor()
+        cur.execute(SQL, (assunto, mensagem))
+        conn.commit()
+        cur.close()
+        conn.close()
 
-@route('/', method='POST')
-def send():
-    assunto = request.forms.get('assunto')
-    mensagem = request.forms.get('mensagem')
+        print('Mensagem registrada !')
 
-    register_message(assunto, mensagem)
+    def send():
+        assunto = request.forms.get('assunto')
+        mensagem = request.forms.get('mensagem')
 
-    return 'Mensagem enfileirada ! Assunto: {} Mensagem: {}'.format(
-        assunto, mensagem
-    )
+        register_message(assunto, mensagem)
+
+        return 'Mensagem enfileirada ! Assunto: {} Mensagem: {}'.format(
+            assunto, mensagem
+        )
 
 
 if __name__ == '__main__':
